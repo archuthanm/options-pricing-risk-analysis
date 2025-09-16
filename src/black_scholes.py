@@ -5,7 +5,7 @@ from scipy.stats import norm # Normal distribution is used by the formula
 
 def blackScholes(r, S, X, T, sigma, type): 
     
-    # r: Risk-Free Interest Rate (%)
+    # r: Risk-Free Interest Rate
     # S: Underlying Stock Price ($)
     # X: Strike/Exercise Price ($)
     # T: Time to Expiration (in years)
