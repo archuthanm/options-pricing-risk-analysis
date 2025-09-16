@@ -242,9 +242,3 @@ def monteCarloV2A(S, X, vol, r, N, M, T):
 
     print("V2A: Call option value is ${0} with Standard Error +/- {1}".format(np.round(C0,2), np.round(SE,2)))
     #stockPricePaths(lnSt, M)
-
-  
-monteCarloV1(101.15, 98.01, 0.0991, 0.01, 1, 10000, 60/365)
-monteCarloV1A(101.15, 98.01, 0.0991, 0.01, 1, 10000, 60/365)
-monteCarloV2(101.15, 98.01, 0.0991, 0.01, 1, 10000, 60/365)
-monteCarloV2A(101.15, 98.01, 0.0991, 0.01, 1, 10000, 60/365)
