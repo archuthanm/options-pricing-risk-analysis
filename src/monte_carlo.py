@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 # Helper functions
 
 # Precomputation of Constants
-def precompConst(S, vol, r, T, N):
+def precompConst(S: float, vol: float, r: float, T: float, N: int) -> tuple[float, float, float]:
     # Length of single time step (in years): Time to Expiry divided into N steps
     dt = T/N
     
@@ -24,7 +24,7 @@ def precompConst(S, vol, r, T, N):
     return drift_dt, volsdt, lnS
 
 # Computation of Expectation and Standard Error
-def calcExpValAndSE(r, T, sum_payoff, sum_payoff2, M, discounted_payoff, vectorized):
+def calcExpValAndSE(r: float, T: float, sum_payoff: float, sum_payoff2: float, M: int, discounted_payoff: np.ndarray, vectorized: bool) -> tuple[float, float]:
     
     if (not vectorized):
         # Expected Option Value: sum_CT/M = average payoff across all simulations; np.exp(-r*T) -> discounted back to present value under the risk-free rate.
@@ -48,7 +48,7 @@ def calcExpValAndSE(r, T, sum_payoff, sum_payoff2, M, discounted_payoff, vectori
     return C0, SE
 
 # Visualize stock price paths
-def stockPricePaths(lnSt, M):
+def stockPricePaths(lnSt: np.ndarray, M: int) -> None:
 
     ST_paths = np.exp(lnSt)
     num_paths_to_plot = M
@@ -65,7 +65,7 @@ def stockPricePaths(lnSt, M):
 
 
 # Slow Solution for Monte Carlo Implementation - Loops.
-def monteCarloV1(S, X, vol, r, N, M, T) :
+def monteCarloV1(S: float, X: float, vol: float, r: float, N: int, M: int, T: float, type: str) -> tuple[float, float]:
 
     # S: Stock Price ($)
     # X: Strike/Exercise Price ($)
@@ -74,6 +74,8 @@ def monteCarloV1(S, X, vol, r, N, M, T) :
     # N: Number of Time Steps
     # M: Number of Simulations
     # T: Time to Expiry (in years)
+    # type: defines the type of option -> "C" for Call and "P" for put
+
 
     #Precompute Constants
     drift_dt, volsdt, lnS = precompConst(S, vol, r, T, N)
@@ -92,8 +94,15 @@ def monteCarloV1(S, X, vol, r, N, M, T) :
             lnSt = lnSt + drift_dt + volsdt*np.random.normal() # Update log-price: add deterministic drift and random diffusion
         
         ST = np.exp(lnSt) # Simulated Final Stock Price
-        payoff = max(0, ST - X) # Payoff: If ST > X, payoff is ST - X; otherwise payoff is 0 (option not exercised)
-        
+
+        # Payoff is calculated differently for Call and Put options
+        if type == "C": # Call Option Case
+            payoff = max(0, ST - X) # Call Payoff: If ST > X, payoff is ST - X; otherwise payoff is 0 (option not exercised)
+        elif type == "P": # Put Option Case
+            payoff = max(0, X - ST) # Put Payoff: If X > ST, payoff is X - ST; otherwise payoff is 0 (option not exercised)
+        else:
+            print("Error. Please confirm all option parameters were entered correctly and try again.")
+                
         # Accumulate this simulation's payoff (CT) and its square for expectation and variance calculation
         sum_payoff = sum_payoff + payoff
         sum_payoff2 = sum_payoff2 + payoff**2
@@ -101,12 +110,12 @@ def monteCarloV1(S, X, vol, r, N, M, T) :
     # Computing Expected Option Value and Standard Error
     C0, SE =  calcExpValAndSE(r, T, sum_payoff, sum_payoff2, M, 0, False)
 
-    print("V1: Call option value is ${0} with Standard Error +/- {1}".format(np.round(C0,2), np.round(SE,2)))
+    return C0, SE
     #stockPricePaths(lnSt, M)
 
 
 # Implementing Variance Reductoin with Antithetic Variates for the Slow Solution.
-def monteCarloV1A(S, X, vol, r, N, M, T) :
+def monteCarloV1A(S: float, X: float, vol: float, r: float, N: int, M: int, T: float, type: str) -> tuple[float, float]:
 
     # S: Stock Price ($)
     # X: Strike/Exercise Price ($)
@@ -142,7 +151,13 @@ def monteCarloV1A(S, X, vol, r, N, M, T) :
         ST1 = np.exp(lnSt1) # Simulated Final Stock Price of asset 1
         ST2 = np.exp(lnSt2) # Simulated Final Stock Price of asset 2
 
-        payoff = (max(0, ST1 - X) + max(0, ST2 - X))/2 # Average Payoff of the two assets.
+        # Payoff is calculated differently for Call and Put options
+        if type == "C": # Call Option Case
+            payoff = (max(0, ST1 - X) + max(0, ST2 - X))/2 # Average Call Payoff of the two assets
+        elif type == "P": # Put Option Case
+            payoff = (max(0, X - ST1) + max(0, X - ST2))/2 # Average Put Payoff of the two assets
+        else:
+            print("Error. Please confirm all option parameters were entered correctly and try again.")
         
         # Accumulate this simulation's payoff and its square for expectation and variance calculation
         sum_payoff = sum_payoff + payoff
@@ -152,12 +167,12 @@ def monteCarloV1A(S, X, vol, r, N, M, T) :
     # Computing Expected Option Value and Standard Error
     C0, SE =  calcExpValAndSE(r, T, sum_payoff, sum_payoff2, M, 0, False)
     
-    print("V1A: Call option value is ${0} with Standard Error +/- {1}".format(np.round(C0,2), np.round(SE,2)))
+    return C0, SE
     #stockPricePaths(lnSt, M)
 
 
 # Vectorized Version - Faster, more efficient implementation of Monte Carlo Simulation.
-def monteCarloV2(S, X, vol, r, N, M, T):
+def monteCarloV2(S: float, X: float, vol: float, r: float, N: int, M: int, T: float, type: str) -> tuple[float, float]:
 
     # S: Stock Price ($)
     # X: Strike/Exercise Price ($)
@@ -189,19 +204,23 @@ def monteCarloV2(S, X, vol, r, N, M, T):
     # Convert ln-prices to actual stock prices for all time steps and simulations
     ST = np.exp(lnSt)
 
-    # Discounted payoff of call option at each time step for all simulations (only last row is needed: for European Call options)
-    discounted_payoff = np.exp(-r*T) * np.maximum(0, ST[-1] - X)
+    # Payoff is calculated differently for call and pay options
+    if type == "C":
+        discounted_payoff = np.exp(-r*T) * np.maximum(0, ST[-1] - X)
+    elif type == "P":
+        discounted_payoff = np.exp(-r*T) * np.maximum(0, X - ST[-1])
+    else:
+        print("Error. Please confirm all option parameters were entered correctly and try again.")
 
-    
     # Computing Expected Option Value and Standard Error
     C0, SE = calcExpValAndSE(r, T, 0, 0, M, discounted_payoff, True)
 
-    print("V2: Call option value is ${0} with Standard Error +/- {1}".format(np.round(C0,2), np.round(SE,2)))
+    return C0, SE
     #stockPricePaths(lnSt, M)
 
 
 # Implementing Variance Reduction with Antithetic Variates for the Vectorized Version.
-def monteCarloV2A(S, X, vol, r, N, M, T):
+def monteCarloV2A(S: float, X: float, vol: float, r: float, N: int, M: int, T: float, type: str) -> tuple[float, float]:
 
     # S: Stock Price ($)
     # X: Strike/Exercise Price ($)
@@ -233,12 +252,17 @@ def monteCarloV2A(S, X, vol, r, N, M, T):
     ST1 = np.exp(lnSt1)
     ST2 = np.exp(lnSt2)
 
-    # Discounted payoff of call option at each time step for all simulations (only last row is needed: for European Call options)
-    discounted_payoff = np.exp(-r*T) * (np.maximum(0, ST1[-1] - X) + np.maximum(0, ST2[-1] - X))/2
+    # Payoff is calculated differently for call and pay options
+    if type == "C":
+        discounted_payoff = np.exp(-r*T) * (np.maximum(0, ST1[-1] - X) + np.maximum(0, ST2[-1] - X))/2
+    elif type == "P":
+        discounted_payoff = np.exp(-r*T) * (np.maximum(0, X - ST1[-1]) + np.maximum(0, X - ST2[-1]))/2
+    else:
+        print("Error. Please confirm all option parameters were entered correctly and try again.")
     
 
     # Computing Expected Option Value and Standard Error
     C0, SE = calcExpValAndSE(r, T, 0, 0, M, discounted_payoff, True)
 
-    print("V2A: Call option value is ${0} with Standard Error +/- {1}".format(np.round(C0,2), np.round(SE,2)))
+    return C0, SE
     #stockPricePaths(lnSt, M)

@@ -3,7 +3,7 @@
 import numpy as np
 from scipy.stats import norm # Normal distribution is used by the formula
 
-def blackScholes(r, S, X, T, sigma, type): 
+def blackScholes(r, S, X, T, sigma, type):
     
     # r: Risk-Free Interest Rate
     # S: Underlying Stock Price ($)
