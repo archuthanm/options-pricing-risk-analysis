@@ -3,7 +3,7 @@
 import numpy as np
 from scipy.stats import norm # Normal distribution is used by the formula
 
-def blackScholes(r, S, X, T, sigma, type):
+def blackScholes(r: float, S: float, X: float, T: float, sigma: float, type: str) -> float:
     
     # r: Risk-Free Interest Rate
     # S: Underlying Stock Price ($)
@@ -29,7 +29,7 @@ def blackScholes(r, S, X, T, sigma, type):
 
 
 # Calculating Delta Greek of European Option
-def calcDelta(r, S, X, T, sigma, type):
+def calcDelta(r: float, S: float, X: float, T: float, sigma: float, type: str) -> float:
 
     # Calculating d1
     d1 = ( np.log(S/X) + (r + sigma**2/2) * T ) / ( sigma*np.sqrt(T) )
@@ -45,7 +45,7 @@ def calcDelta(r, S, X, T, sigma, type):
         print("Error. Please confirm all option parameters were entered correctly and try again.")
 
 # Calculating Gamma Greek of European Option
-def calcGamma(r, S, X, T, sigma, type):
+def calcGamma(r: float, S: float, X: float, T: float, sigma: float, type: str) -> float:
     
     # Calculating d1
     d1 = ( np.log(S/X) + (r + sigma**2/2) * T ) / ( sigma*np.sqrt(T) )
@@ -57,8 +57,7 @@ def calcGamma(r, S, X, T, sigma, type):
         print("Error. Please confirm all option parameters were entered correctly and try again.")
 
 # Calculating Vega Greek of European Option
-
-def calcVega(r, S, X, T, sigma, type):
+def calcVega(r: float, S: float, X: float, T: float, sigma: float, type: str) -> float:
 
     # Calculating d1 and d2
     d1 = ( np.log(S/X) + (r + sigma**2/2) * T ) / ( sigma*np.sqrt(T) )
@@ -70,7 +69,7 @@ def calcVega(r, S, X, T, sigma, type):
         print("Error. Please confirm all option parameters were entered correctly and try again.")
 
 # Calculating Theta Greek of European Option
-def calcTheta(r, S, X, T, sigma, type):
+def calcTheta(r: float, S: float, X: float, T: float, sigma: float, type: str) -> float:
 
     # Calculating d1 and d2
     d1 = ( np.log(S/X) + (r + sigma**2/2) * T ) / ( sigma*np.sqrt(T) )
@@ -87,7 +86,7 @@ def calcTheta(r, S, X, T, sigma, type):
         print("Error. Please confirm all option parameters were entered correctly and try again.")
 
 # Calculating Rho Greek of European Option
-def calcRho(r, S, X, T, sigma, type):
+def calcRho(r: float, S: float, X: float, T: float, sigma: float, type: str) -> float:
 
     # Calculating d1 and d2
     d1 = ( np.log(S/X) + (r + sigma**2/2) * T ) / ( sigma*np.sqrt(T) )
@@ -105,7 +104,7 @@ def calcRho(r, S, X, T, sigma, type):
 
 
 # Calculate and Return all Greeks for Black Scholes Formula
-def calcBSGreeks(r, S, X, T, sigma, type):
+def calcBSGreeks(r: float, S: float, X: float, T: float, sigma: float, type: str) -> tuple[float, float, float, float, float]:
 
     delta = calcDelta(r, S, X, T, sigma, type)
     gamma = calcGamma(r, S, X, T, sigma, type)
