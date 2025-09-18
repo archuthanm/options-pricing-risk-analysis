@@ -4,7 +4,7 @@ import pandas as pd
 import datetime
 import scipy.stats as stats
 import matplotlib.pyplot as plt
-from black_scholes import calcDelta as delta
+from black_scholes import calcDelta as delta, calcGamma as gamma
 
 # initial option parameters for implementation of Delta-Based Control Variates for Variance Rediction
 
@@ -12,8 +12,8 @@ S = 101.15 # stock price
 X = 98.01 # Strike Price
 vol = 0.0991 # volatility
 r = 0.015 # risk-free rate
-N = 10 # number of time steps
-M = 10000 # number of simulations
+N = 20 # number of time steps
+M = 1000 # number of simulations
 
 market_value = 3.86 # market price of option
 
@@ -23,7 +23,7 @@ T = 60/365 # Time to expiry (in years)
 # Helper functions
 
 # Precomputation of Constants
-def precompConst(S: float, vol: float, r: float, T: float, N: int) -> tuple[float, float, float, float, float]:
+def precompConst(S: float, vol: float, r: float, T: float, N: int) -> tuple[float, float, float, float]:
     # Length of single time step (in years): Time to Expiry divided into N steps
     dt = T/N
     
@@ -36,10 +36,7 @@ def precompConst(S: float, vol: float, r: float, T: float, N: int) -> tuple[floa
     # Natural Logarithm of Current Stock Price
     lnS = np.log(S)
 
-    # Exponential of (risk-free rate x change in time): forward factor
-    erdt = np.exp(r*dt)
-
-    return drift_dt, volsdt, lnS, erdt, dt
+    return drift_dt, volsdt, lnS, dt
 
 # Computation of Expectation and Standard Error
 def calcExpValAndSE(r: float, T: float, sum_payoff: float, sum_payoff2: float, M: int, discounted_payoff: np.ndarray, vectorized: bool) -> tuple[float, float]:
@@ -82,6 +79,8 @@ def stockPricePaths(lnSt: np.ndarray, M: int) -> None:
     plt.show()
 
 
+# Variants of Monte Carlo Simulator for (European) Options Pricing
+
 # Slow Solution for Monte Carlo Implementation - Loops.
 def monteCarloV1(S: float, X: float, vol: float, r: float, N: int, M: int, T: float, type: str) -> tuple[float, float]:
 
@@ -96,7 +95,7 @@ def monteCarloV1(S: float, X: float, vol: float, r: float, N: int, M: int, T: fl
 
 
     #Precompute Constants
-    drift_dt, volsdt, lnS = precompConst(S, vol, r, T, N)
+    drift_dt, volsdt, lnS, dt = precompConst(S, vol, r, T, N)
 
 
     # Standard Error Placeholders
@@ -144,7 +143,7 @@ def monteCarloV1A(S: float, X: float, vol: float, r: float, N: int, M: int, T: f
     # T: Time to Expiry (in years)
 
     #Precompute Constants
-    drift_dt, volsdt, lnS = precompConst(S, vol, r, T, N)
+    drift_dt, volsdt, lnS, dt = precompConst(S, vol, r, T, N)
 
     # Standard Error Placeholders
     sum_payoff = 0 # Accumulator for the sum of simulated option payoffs
@@ -181,8 +180,15 @@ def monteCarloV1A(S: float, X: float, vol: float, r: float, N: int, M: int, T: f
         sum_payoff = sum_payoff + payoff
         sum_payoff2 = sum_payoff2 + payoff**2
 
+        # Computing Expected Option Value and Standard Error
+        C0, SE =  calcExpValAndSE(r, T, sum_payoff, sum_payoff2, M, 0, False)
+
+        return C0, SE
+        #stockPricePaths(lnSt, M)
+
+
 # Implementing Variance Reductoin with (Delta-based) Control Variates for the Slow Solution.
-def monteCarloV1C(S: float, X: float, vol: float, r: float, N: int, M: int, T: float, type: str) -> tuple[float, float]:
+def monteCarloV1DC(S: float, X: float, vol: float, r: float, N: int, M: int, T: float, type: str) -> tuple[float, float]:
 
     # S: Stock Price ($)
     # X: Strike/Exercise Price ($)
@@ -193,7 +199,10 @@ def monteCarloV1C(S: float, X: float, vol: float, r: float, N: int, M: int, T: f
     # T: Time to Expiry (in years)
 
     #Precompute Constants
-    drift_dt, volsdt, lnS, erdt, dt = precompConst(S, vol, r, T, N)
+    drift_dt, volsdt, lnS, dt = precompConst(S, vol, r, T, N)
+
+    # Exponential of (risk-free rate x change in time): forward factor
+    erdt = np.exp(r*dt)
 
     beta1 = -1  # Hardcoded beta coefficient for control variate adjustment; typically estimated but fixed here for simplicity
 
@@ -256,7 +265,7 @@ def monteCarloV2(S: float, X: float, vol: float, r: float, N: int, M: int, T: fl
     # T: Time to Expiry (in years)
 
     #Precompute Constants
-    drift_dt, volsdt, lnS = precompConst(S, vol, r, T, N)
+    drift_dt, volsdt, lnS, dt = precompConst(S, vol, r, T, N)
 
 
     # Monte Carlo Method
@@ -304,7 +313,7 @@ def monteCarloV2A(S: float, X: float, vol: float, r: float, N: int, M: int, T: f
     # T: Time to Expiry (in years)
 
     #Precompute Constants
-    drift_dt, volsdt, lnS = precompConst(S, vol, r, T, N)
+    drift_dt, volsdt, lnS, dt = precompConst(S, vol, r, T, N)
 
 
     # Monte Carlo Method
@@ -342,10 +351,13 @@ def monteCarloV2A(S: float, X: float, vol: float, r: float, N: int, M: int, T: f
 
 
 # Implementing Variance Reductoin with (Delta-based) Control Variates for the Vectorized Solution.
-def monteCarloV2C(S: float, X: float, vol: float, r: float, N: int, M: int, T: float, type: str) -> tuple[float, float]:
+def monteCarloV2DC(S: float, X: float, vol: float, r: float, N: int, M: int, T: float, type: str) -> tuple[float, float]:
     
     #Precompute Constants
-    drift_dt, volsdt, lnS, erdt, dt = precompConst(S, vol, r, T, N)
+    drift_dt, volsdt, lnS, dt = precompConst(S, vol, r, T, N)
+
+    # Exponential of (risk-free rate x change in time): forward factor
+    erdt = np.exp(r*dt)
 
     cv = 0
     beta1 = -1  # Hardcoded beta coefficient for control variate adjustment; fixed for simplicity
@@ -390,4 +402,88 @@ def monteCarloV2C(S: float, X: float, vol: float, r: float, N: int, M: int, T: f
     return C0, SE
     #stockPricePaths(lnSt, M)
 
-print(monteCarloV2C(S, X, vol, r, N, M, T, "C"))
+
+# Implementing Variance Reductoin with (Gamma-based) Control Variates for the Vectorized Solution.
+def monteCarloV2GC(S: float, X: float, vol: float, r: float, N: int, M: int, T: float, type: str) -> tuple[float, float]:
+    
+    #Precompute Constants
+    drift_dt, volsdt, lnS, dt = precompConst(S, vol, r, T, N)
+
+    # Exponential of (risk-free rate x change in time): forward factor
+    erdt = np.exp(r*dt)
+
+    ergamma = np.exp((2*r + vol**2)*dt) - 2*erdt + 1
+
+    beta2 = -0.5
+
+    # Monte Carlo Method
+
+    # NxM matrix of standard normal random numbers: each cell represents the random increment (for each time step in each simulation)
+    Z = np.random.normal(size = (N, M))
+    
+    # NxM matrix of ln(S) increments: drift + stochastic term (for each time step in each simulation)
+    delta_St = drift_dt + volsdt*Z
+
+    # Calculate stock price paths by cumulative product of exponentials of increments
+    ST = S*np.cumprod(np.exp(delta_St), axis = 0)
+
+    # Prepend initial stock price as first row to get full path including time 0
+    ST = np.concatenate((np.full(shape = (1, M), fill_value = S), ST))
+
+    # Create time grid for remaining time to expiry at each time step; avoid zero to prevent divide-by-zero in delta calculation
+    # This grid goes from T down to dt (not zero)
+    gammaST = gamma(r, ST[:-1].T, X, np.linspace(T, dt, N), vol, type).T
+
+    # Calculate cumulative sum of control variates: delta * (actual increment - expected increment)
+    # This accumulates the control variate adjustment over all time steps for each simulation
+    cv2 = np.cumsum(gammaST*((ST[1:] - ST[:-1])**2 - ergamma*ST[:-1]**2), axis = 0)
+    
+
+    # Payoff is calculated differently for call and pay options
+    # Adjust payoff by adding scaled control variate (last cumulative value) before discounting
+    if type == "C":
+        discounted_payoff = np.exp(-r*T) * (np.maximum(0, ST[-1] - X) + beta2*cv2[-1])
+    elif type == "P":
+        discounted_payoff = np.exp(-r*T) * (np.maximum(0, X - ST[-1]) + beta2*cv2[-1])
+    else:
+        raise ValueError(f"Invalid option type '{type}'. Must be 'C' for Call or 'P' for Put.")
+    
+
+    # Computing Expected Option Value and Standard Error
+    # Using vectorized discounted payoff array including control variate adjustment
+    C0, SE = calcExpValAndSE(r, T, 0, 0, M, discounted_payoff, True)
+
+    return C0, SE
+    #stockPricePaths(lnSt, M)
+
+
+def comparisons(S, X, vol, r, N, M, T, type):
+    
+    C02, SE2 = monteCarloV2(S, X, vol, r, N, M, T, type)
+    C03, SE3 = monteCarloV2A(S, X, vol, r, N, M, T, type)
+    C04, SE4 = monteCarloV2DC(S, X, vol, r, N, M, T, type)
+    C04, SE5 = monteCarloV2GC(S, X, vol, r, N, M, T, type)
+
+
+    a = SE2/SE2
+    b = SE2/SE3
+    c = SE2/SE4
+    d = SE2/SE5
+
+    results = {
+        "Vectorized Monte Carlo": {"SE": SE2, "SE Reduction Multiple": a},
+        "Vectorized Monte Carlo with Antithetic Variates": {"SE": SE3, "SE Reduction Multiple": b},
+        "Vectorized Monte Carlo with Delta-based Control Variates": {"SE": SE4, "SE Reduction Multiple": c},
+        "Vectorized Monte Carlo with Gamma-based Control Variates": {"SE": SE5, "SE Reduction Multiple": d},
+
+    }
+
+
+
+    # Build DataFrame
+    df = pd.DataFrame(results).T  # Transpose so versions are rows
+    df.columns = ["Standard Error", "Standard Error Reduction Multiple"]
+
+    print(df)
+
+comparisons(S, X, vol, r, N, M, T, "C")
