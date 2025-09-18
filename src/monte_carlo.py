@@ -23,7 +23,7 @@ T = 60/365 # Time to expiry (in years)
 # Helper functions
 
 # Precomputation of Constants
-def precompConst(S: float, vol: float, r: float, T: float, N: int) -> tuple[float, float, float, float]:
+def precompConst(S: float, vol: float, r: float, T: float, N: int) -> tuple[float, float, float, float, float]:
     # Length of single time step (in years): Time to Expiry divided into N steps
     dt = T/N
     
@@ -96,7 +96,7 @@ def monteCarloV1(S: float, X: float, vol: float, r: float, N: int, M: int, T: fl
 
 
     #Precompute Constants
-    drift_dt, volsdt, lnS, erdt = precompConst(S, vol, r, T, N)
+    drift_dt, volsdt, lnS = precompConst(S, vol, r, T, N)
 
 
     # Standard Error Placeholders
@@ -119,7 +119,7 @@ def monteCarloV1(S: float, X: float, vol: float, r: float, N: int, M: int, T: fl
         elif type == "P": # Put Option Case
             payoff = max(0, X - ST) # Put Payoff: If X > ST, payoff is X - ST; otherwise payoff is 0 (option not exercised)
         else:
-            print("Error. Please confirm all option parameters were entered correctly and try again.")
+            raise ValueError(f"Invalid option type '{type}'. Must be 'C' for Call or 'P' for Put.")
                 
         # Accumulate this simulation's payoff (CT) and its square for expectation and variance calculation
         sum_payoff = sum_payoff + payoff
@@ -144,7 +144,7 @@ def monteCarloV1A(S: float, X: float, vol: float, r: float, N: int, M: int, T: f
     # T: Time to Expiry (in years)
 
     #Precompute Constants
-    drift_dt, volsdt, lnS, erdt = precompConst(S, vol, r, T, N)
+    drift_dt, volsdt, lnS = precompConst(S, vol, r, T, N)
 
     # Standard Error Placeholders
     sum_payoff = 0 # Accumulator for the sum of simulated option payoffs
@@ -175,7 +175,7 @@ def monteCarloV1A(S: float, X: float, vol: float, r: float, N: int, M: int, T: f
         elif type == "P": # Put Option Case
             payoff = (max(0, X - ST1) + max(0, X - ST2))/2 # Average Put Payoff of the two assets
         else:
-            print("Error. Please confirm all option parameters were entered correctly and try again.")
+            raise ValueError(f"Invalid option type '{type}'. Must be 'C' for Call or 'P' for Put.")
         
         # Accumulate this simulation's payoff and its square for expectation and variance calculation
         sum_payoff = sum_payoff + payoff
@@ -195,7 +195,7 @@ def monteCarloV1C(S: float, X: float, vol: float, r: float, N: int, M: int, T: f
     #Precompute Constants
     drift_dt, volsdt, lnS, erdt, dt = precompConst(S, vol, r, T, N)
 
-    beta1 = -1
+    beta1 = -1  # Hardcoded beta coefficient for control variate adjustment; typically estimated but fixed here for simplicity
 
     # Standard Error Placeholders
     sum_payoff = 0 # Accumulator for the sum of simulated option payoffs
@@ -205,31 +205,39 @@ def monteCarloV1C(S: float, X: float, vol: float, r: float, N: int, M: int, T: f
     # Monte Carlo Method
     for i in range(M): # M simulations take place (each with N time steps)
         St = S
-        cv = 0 # control variate
+        cv = 0 # control variate accumulator
 
         # Simulation of N time steps (to expiry date)
         for j in range(N):
 
             epsilon = np.random.normal()
-            deltaSt = delta(r, S, X, T-j*dt, vol, "C")
+
+            # Calculate delta of the option at current step for control variate adjustment
+            deltaSt = delta(r, S, X, T-j*dt, vol, type)
+
+            # Simulate next stock price using geometric Brownian motion
             next_St = St*np.exp(drift_dt + volsdt*epsilon)
+
+            # Accumulate control variate term: delta times difference between actual and expected increment
             cv = cv + deltaSt*(next_St - St*erdt)
 
             St = next_St
 
-        # Handling both Call and Put options
+        # Adjust payoff by adding control variate term scaled by beta1
+        # This reduces variance by leveraging correlation between payoff and control variate
         if type == "C":
             payoff = max(0, St - X) + beta1*cv
         elif type == "P":
             payoff = max(0, X - St) + beta1*cv
         else:
-            print("Error. Please confirm all option parameters were entered correctly and try again.")
+            raise ValueError(f"Invalid option type '{type}'. Must be 'C' for Call or 'P' for Put.")
 
         sum_payoff = sum_payoff + payoff
         sum_payoff2 = sum_payoff2 + payoff**2
 
     
     # Computing Expected Option Value and Standard Error
+    # Note: payoff already includes control variate adjustment; discounting done in calcExpValAndSE
     C0, SE =  calcExpValAndSE(r, T, sum_payoff, sum_payoff2, M, 0, False)
     
     return C0, SE
@@ -248,7 +256,7 @@ def monteCarloV2(S: float, X: float, vol: float, r: float, N: int, M: int, T: fl
     # T: Time to Expiry (in years)
 
     #Precompute Constants
-    drift_dt, volsdt, lnS, erdt = precompConst(S, vol, r, T, N)
+    drift_dt, volsdt, lnS = precompConst(S, vol, r, T, N)
 
 
     # Monte Carlo Method
@@ -275,7 +283,7 @@ def monteCarloV2(S: float, X: float, vol: float, r: float, N: int, M: int, T: fl
     elif type == "P":
         discounted_payoff = np.exp(-r*T) * np.maximum(0, X - ST[-1])
     else:
-        print("Error. Please confirm all option parameters were entered correctly and try again.")
+        raise ValueError(f"Invalid option type '{type}'. Must be 'C' for Call or 'P' for Put.")
 
     # Computing Expected Option Value and Standard Error
     C0, SE = calcExpValAndSE(r, T, 0, 0, M, discounted_payoff, True)
@@ -296,7 +304,7 @@ def monteCarloV2A(S: float, X: float, vol: float, r: float, N: int, M: int, T: f
     # T: Time to Expiry (in years)
 
     #Precompute Constants
-    drift_dt, volsdt, lnS, erdt = precompConst(S, vol, r, T, N)
+    drift_dt, volsdt, lnS = precompConst(S, vol, r, T, N)
 
 
     # Monte Carlo Method
@@ -323,7 +331,7 @@ def monteCarloV2A(S: float, X: float, vol: float, r: float, N: int, M: int, T: f
     elif type == "P":
         discounted_payoff = np.exp(-r*T) * (np.maximum(0, X - ST1[-1]) + np.maximum(0, X - ST2[-1]))/2
     else:
-        print("Error. Please confirm all option parameters were entered correctly and try again.")
+        raise ValueError(f"Invalid option type '{type}'. Must be 'C' for Call or 'P' for Put.")
     
 
     # Computing Expected Option Value and Standard Error
@@ -337,8 +345,10 @@ def monteCarloV2A(S: float, X: float, vol: float, r: float, N: int, M: int, T: f
 def monteCarloV2C(S: float, X: float, vol: float, r: float, N: int, M: int, T: float, type: str) -> tuple[float, float]:
     
     #Precompute Constants
-    drift_dt, volsdt, lnS, erdt = precompConst(S, vol, r, T, N)
+    drift_dt, volsdt, lnS, erdt, dt = precompConst(S, vol, r, T, N)
 
+    cv = 0
+    beta1 = -1  # Hardcoded beta coefficient for control variate adjustment; fixed for simplicity
 
     # Monte Carlo Method
 
@@ -346,31 +356,38 @@ def monteCarloV2C(S: float, X: float, vol: float, r: float, N: int, M: int, T: f
     Z = np.random.normal(size = (N, M))
     
     # NxM matrix of ln(S) increments: drift + stochastic term (for each time step in each simulation)
-    delta_lnSt1 = drift_dt + volsdt*Z
-    delta_lnSt2 = drift_dt - volsdt*Z
+    delta_St = drift_dt + volsdt*Z
+
+    # Calculate stock price paths by cumulative product of exponentials of increments
+    ST = S*np.cumprod(np.exp(delta_St), axis = 0)
+
+    # Prepend initial stock price as first row to get full path including time 0
+    ST = np.concatenate((np.full(shape = (1, M), fill_value = S), ST))
+
+    # Create time grid for remaining time to expiry at each time step; avoid zero to prevent divide-by-zero in delta calculation
+    # This grid goes from T down to dt (not zero)
+    deltaST = delta(r, ST[:-1].T, X, np.linspace(T, dt, N), vol, type).T
+
+    # Calculate cumulative sum of control variates: delta * (actual increment - expected increment)
+    # This accumulates the control variate adjustment over all time steps for each simulation
+    cv = np.cumsum(deltaST*(ST[1:] - ST[:-1]*erdt), axis = 0)
     
-    # NxM matrix of cumulative ln(S) paths: each column is one simulation, each row = ln(S) after that time step
-    lnSt1 = lnS + np.cumsum(delta_lnSt1, axis = 0)
-    lnSt2 = lnS + np.cumsum(delta_lnSt2, axis = 0)
-
-
-    # Convert log-prices to actual stock prices for both (perfectly negatively correlated) assets
-    ST1 = np.exp(lnSt1)
-    ST2 = np.exp(lnSt2)
 
     # Payoff is calculated differently for call and pay options
+    # Adjust payoff by adding scaled control variate (last cumulative value) before discounting
     if type == "C":
-        discounted_payoff = np.exp(-r*T) * (np.maximum(0, ST1[-1] - X) + np.maximum(0, ST2[-1] - X))/2
+        discounted_payoff = np.exp(-r*T) * (np.maximum(0, ST[-1] - X) + beta1*cv[-1])
     elif type == "P":
-        discounted_payoff = np.exp(-r*T) * (np.maximum(0, X - ST1[-1]) + np.maximum(0, X - ST2[-1]))/2
+        discounted_payoff = np.exp(-r*T) * (np.maximum(0, X - ST[-1]) + beta1*cv[-1])
     else:
-        print("Error. Please confirm all option parameters were entered correctly and try again.")
+        raise ValueError(f"Invalid option type '{type}'. Must be 'C' for Call or 'P' for Put.")
     
 
     # Computing Expected Option Value and Standard Error
+    # Using vectorized discounted payoff array including control variate adjustment
     C0, SE = calcExpValAndSE(r, T, 0, 0, M, discounted_payoff, True)
 
     return C0, SE
     #stockPricePaths(lnSt, M)
 
-print(monteCarloV1C(S, X, vol, r, N, M, T, "C"))
+print(monteCarloV2C(S, X, vol, r, N, M, T, "C"))
