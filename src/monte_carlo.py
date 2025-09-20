@@ -5,7 +5,7 @@ import pandas as pd
 import datetime
 import scipy.stats as stats
 import matplotlib.pyplot as plt
-from black_scholes import calcDelta as delta, calcGamma as gamma
+from black_scholes import calcDelta as delta, calcGamma as gamma, calcVega as vega, calcTheta as theta, calcRho as rho
 
 # initial option parameters for implementation of Delta-Based Control Variates for Variance Rediction
 
@@ -20,6 +20,8 @@ market_value = 3.86 # market price of option
 
 T = 60/365 # Time to expiry (in years)
 
+# NxM matrix of standard normal random numbers: each cell represents the random increment (for each time step in each simulation)
+Z = np.random.normal(size = (N, M))
 
 # Helper functions
 
@@ -78,6 +80,72 @@ def stockPricePaths(lnSt: np.ndarray, M: int) -> None:
     plt.title('Sample Monte Carlo Stock Price Paths')
     plt.grid(True)
     plt.show()
+
+
+def comparisons(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str) -> None:
+    
+    C02, SE2, comp2 = monteCarloV2(S, X, vol, r, N, M, Z, T, type)
+    C03, SE3, comp3 = monteCarloV2A(S, X, vol, r, N, M, Z, T, type)
+    C04, SE4, comp4 = monteCarloV2DC(S, X, vol, r, N, M, Z, T, type)
+    C05, SE5, comp5 = monteCarloV2GC(S, X, vol, r, N, M, Z, T, type)
+    C06, SE6, comp6 = monteCarloV2AD(S, X, vol, r, N, M, Z, T, type)
+    C07, SE7, comp7 = monteCarloV2Final(S, X, vol, r, N, M, Z, T, type)
+
+    results = [
+        {
+            "Function": "Vectorized Monte Carlo",
+            "Standard Error": SE2,
+            "Computation Time": comp2,
+            "Standard Error Reduction Multiple": SE2/SE2,
+            "Relative Computation Time": comp2/comp2,
+        },
+        {
+            "Function": "Vectorized Monte Carlo with Antithetic Variates",
+            "Standard Error": SE3,
+            "Computation Time": comp3,
+            "Standard Error Reduction Multiple": SE2/SE3,
+            "Relative Computation Time": comp3/comp2,
+        },
+        {
+            "Function": "Vectorized Monte Carlo with Delta-based Control Variates",
+            "Standard Error": SE4,
+            "Computation Time": comp4,
+            "Standard Error Reduction Multiple": SE2/SE4,
+            "Relative Computation Time": comp4/comp2,
+        },
+        {
+            "Function": "Vectorized Monte Carlo with Gamma-based Control Variates",
+            "Standard Error": SE5,
+            "Computation Time": comp5,
+            "Standard Error Reduction Multiple": SE2/SE5,
+            "Relative Computation Time": comp5/comp2,
+        },
+        {
+            "Function": "Vectorized Monte Carlo with Antithetic AND Delta Variates",
+            "Standard Error": SE6,
+            "Computation Time": comp6,
+            "Standard Error Reduction Multiple": SE2/SE6,
+            "Relative Computation Time": comp6/comp2,
+        },
+        {
+            "Function": "Vectorized Monte Carlo with Antithetic, Delta AND Gamma Variates",
+            "Standard Error": SE7,
+            "Computation Time": comp7,
+            "Standard Error Reduction Multiple": SE2/SE7,
+            "Relative Computation Time": comp7/comp2,
+        }
+    ]
+    pd.set_option('display.max_colwidth', None)
+
+    columns = [
+        "Function",
+        "Standard Error",
+        "Computation Time",
+        "Standard Error Reduction Multiple",
+        "Relative Computation Time",
+    ]
+    df = pd.DataFrame(results, columns=columns)
+    print(df)
 
 
 # Variants of Monte Carlo Simulator for (European) Options Pricing
@@ -255,7 +323,7 @@ def monteCarloV1DC(S: float, X: float, vol: float, r: float, N: int, M: int, T: 
 
 
 # Vectorized Version - Faster, more efficient implementation of Monte Carlo Simulation.
-def monteCarloV2(S: float, X: float, vol: float, r: float, N: int, M: int, T: float, type: str) -> tuple[float, float]:
+def monteCarloV2(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str) -> tuple[float, float]:
 
     start_time = time.time()
 
@@ -272,9 +340,6 @@ def monteCarloV2(S: float, X: float, vol: float, r: float, N: int, M: int, T: fl
 
 
     # Monte Carlo Method
-
-    # NxM matrix of standard normal random numbers: each cell represents the random increment (for each time step in each simulation)
-    Z = np.random.normal(size = (N, M))
     
     # NxM matrix of ln(S) increments: drift + stochastic term (for each time step in each simulation)
     delta_lnst = drift_dt + volsdt*Z
@@ -307,7 +372,7 @@ def monteCarloV2(S: float, X: float, vol: float, r: float, N: int, M: int, T: fl
 
 
 # Implementing Variance Reduction with Antithetic Variates for the Vectorized Version.
-def monteCarloV2A(S: float, X: float, vol: float, r: float, N: int, M: int, T: float, type: str) -> tuple[float, float]:
+def monteCarloV2A(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str) -> tuple[float, float]:
 
     start_time = time.time()
 
@@ -324,9 +389,6 @@ def monteCarloV2A(S: float, X: float, vol: float, r: float, N: int, M: int, T: f
 
 
     # Monte Carlo Method
-
-    # NxM matrix of standard normal random numbers: each cell represents the random increment (for each time step in each simulation)
-    Z = np.random.normal(size = (N, M))
     
     # NxM matrix of ln(S) increments: drift + stochastic term (for each time step in each simulation)
     delta_lnSt1 = drift_dt + volsdt*Z
@@ -360,7 +422,7 @@ def monteCarloV2A(S: float, X: float, vol: float, r: float, N: int, M: int, T: f
 
 
 # Implementing Variance Reduction with (Delta-based) Control Variates for the Vectorized Solution.
-def monteCarloV2DC(S: float, X: float, vol: float, r: float, N: int, M: int, T: float, type: str) -> tuple[float, float]:
+def monteCarloV2DC(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str) -> tuple[float, float]:
 
     start_time = time.time()
 
@@ -374,9 +436,6 @@ def monteCarloV2DC(S: float, X: float, vol: float, r: float, N: int, M: int, T: 
     beta1 = -1  # Hardcoded beta coefficient for control variate adjustment; fixed for simplicity
 
     # Monte Carlo Method
-
-    # NxM matrix of standard normal random numbers: each cell represents the random increment (for each time step in each simulation)
-    Z = np.random.normal(size = (N, M))
     
     # NxM matrix of ln(S) increments: drift + stochastic term (for each time step in each simulation)
     delta_St = drift_dt + volsdt*Z
@@ -417,7 +476,7 @@ def monteCarloV2DC(S: float, X: float, vol: float, r: float, N: int, M: int, T: 
 
 
 # Implementing Variance Reduction with (Gamma-based) Control Variates for the Vectorized Solution.
-def monteCarloV2GC(S: float, X: float, vol: float, r: float, N: int, M: int, T: float, type: str) -> tuple[float, float]:
+def monteCarloV2GC(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str) -> tuple[float, float]:
     
     start_time = time.time()
 
@@ -432,9 +491,6 @@ def monteCarloV2GC(S: float, X: float, vol: float, r: float, N: int, M: int, T: 
     beta2 = -0.5
 
     # Monte Carlo Method
-
-    # NxM matrix of standard normal random numbers: each cell represents the random increment (for each time step in each simulation)
-    Z = np.random.normal(size = (N, M))
     
     # NxM matrix of ln(S) increments: drift + stochastic term (for each time step in each simulation)
     delta_St = drift_dt + volsdt*Z
@@ -475,7 +531,7 @@ def monteCarloV2GC(S: float, X: float, vol: float, r: float, N: int, M: int, T: 
 
 
 # Implementing Variance Reduction with the combination of Antithetic Variates AND (Delta-based) Control Variates for the Vectorized Solution.
-def monteCarloV2AD(S: float, X: float, vol: float, r: float, N: int, M: int, T: float, type: str) -> tuple[float, float]:
+def monteCarloV2AD(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str) -> tuple[float, float]:
     
     start_time = time.time()
 
@@ -488,9 +544,6 @@ def monteCarloV2AD(S: float, X: float, vol: float, r: float, N: int, M: int, T: 
     beta1 = -1  # Hardcoded beta coefficient for control variate adjustment; fixed for simplicity
 
     # Monte Carlo Method
-
-    # NxM matrix of standard normal random numbers: each cell represents the random increment (for each time step in each simulation)
-    Z = np.random.normal(size = (N, M))
     
     # NxM matrix of ln(S) increments: drift + stochastic term (for each time step in each simulation)
     delta_St1 = drift_dt + volsdt*Z
@@ -543,7 +596,7 @@ def monteCarloV2AD(S: float, X: float, vol: float, r: float, N: int, M: int, T: 
 
 
 # Implementing Variance Reduction with the combination of Antithetic Variates, (Delta-based AND Gamma-Based) Control Variates for the Vectorized Solution.
-def monteCarloV2Final(S: float, X: float, vol: float, r: float, N: int, M: int, T: float, type: str) -> tuple[float, float]:
+def monteCarloV2Final(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str) -> tuple[float, float]:
     
     start_time = time.time()
     
@@ -560,9 +613,6 @@ def monteCarloV2Final(S: float, X: float, vol: float, r: float, N: int, M: int, 
     beta2 = -0.5
 
     # Monte Carlo Method
-
-    # NxM matrix of standard normal random numbers: each cell represents the random increment (for each time step in each simulation)
-    Z = np.random.normal(size = (N, M))
     
     # NxM matrix of ln(S) increments: drift + stochastic term (for each time step in each simulation)
     delta_St1 = drift_dt + volsdt*Z
@@ -620,69 +670,155 @@ def monteCarloV2Final(S: float, X: float, vol: float, r: float, N: int, M: int, 
     #stockPricePaths(lnSt, M)
 
 
-def comparisons(S, X, vol, r, N, M, T, type):
+# Calculating Greeks From Monte Carlo Simulator
+
+def calcMCDelta(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str) -> tuple[float, float]:
     
-    C02, SE2, comp2 = monteCarloV2(S, X, vol, r, N, M, T, type)
-    C03, SE3, comp3 = monteCarloV2A(S, X, vol, r, N, M, T, type)
-    C04, SE4, comp4 = monteCarloV2DC(S, X, vol, r, N, M, T, type)
-    C05, SE5, comp5 = monteCarloV2GC(S, X, vol, r, N, M, T, type)
-    C06, SE6, comp6 = monteCarloV2AD(S, X, vol, r, N, M, T, type)
-    C07, SE7, comp7 = monteCarloV2Final(S, X, vol, r, N, M, T, type)
+    drift_dt, volsdt, lnS, dt = precompConst(S, vol, r, T, N)
+    erdt = np.exp(r*dt)
+    ergamma = np.exp((2*r + vol**2)*dt) - 2*erdt + 1
+    beta1 = -1.0
+    beta2 = -0.5
 
-    results = [
-        {
-            "Function": "Vectorized Monte Carlo",
-            "Standard Error": SE2,
-            "Computation Time": comp2,
-            "Standard Error Reduction Multiple": SE2/SE2,
-            "Relative Computation Time": comp2/comp2,
-        },
-        {
-            "Function": "Vectorized Monte Carlo with Antithetic Variates",
-            "Standard Error": SE3,
-            "Computation Time": comp3,
-            "Standard Error Reduction Multiple": SE2/SE3,
-            "Relative Computation Time": comp3/comp2,
-        },
-        {
-            "Function": "Vectorized Monte Carlo with Delta-based Control Variates",
-            "Standard Error": SE4,
-            "Computation Time": comp4,
-            "Standard Error Reduction Multiple": SE2/SE4,
-            "Relative Computation Time": comp4/comp2,
-        },
-        {
-            "Function": "Vectorized Monte Carlo with Gamma-based Control Variates",
-            "Standard Error": SE5,
-            "Computation Time": comp5,
-            "Standard Error Reduction Multiple": SE2/SE5,
-            "Relative Computation Time": comp5/comp2,
-        },
-        {
-            "Function": "Vectorized Monte Carlo with Antithetic AND Delta Variates",
-            "Standard Error": SE6,
-            "Computation Time": comp6,
-            "Standard Error Reduction Multiple": SE2/SE6,
-            "Relative Computation Time": comp6/comp2,
-        },
-        {
-            "Function": "Vectorized Monte Carlo with Antithetic, Delta AND Gamma Variates",
-            "Standard Error": SE7,
-            "Computation Time": comp7,
-            "Standard Error Reduction Multiple": SE2/SE7,
-            "Relative Computation Time": comp7/comp2,
-        }
-    ]
-    pd.set_option('display.max_colwidth', None)
+    # Antithetic log-price increments
+    delta_St1 = drift_dt + volsdt*Z
+    delta_St2 = drift_dt - volsdt*Z
 
-    columns = [
-        "Function",
-        "Standard Error",
-        "Computation Time",
-        "Standard Error Reduction Multiple",
-        "Relative Computation Time",
-    ]
-    df = pd.DataFrame(results, columns=columns)
-    print(df)
+    # Stock price paths
+    ST1 = S * np.cumprod(np.exp(delta_St1), axis=0)
+    ST2 = S * np.cumprod(np.exp(delta_St2), axis=0)
+    ST1 = np.concatenate((np.full((1, M), S), ST1))
+    ST2 = np.concatenate((np.full((1, M), S), ST2))
 
-comparisons(S, X, vol, r, N, M, T, "C")
+    # Time grid for remaining time to expiry
+    t_grid = np.linspace(T, dt, N)
+
+    # Delta and gamma along paths
+    deltaST1 = delta(r, ST1[:-1].T, X, t_grid, vol, type).T
+    deltaST2 = delta(r, ST2[:-1].T, X, t_grid, vol, type).T
+    gammaST1 = gamma(r, ST1[:-1].T, X, t_grid, vol, type).T
+    gammaST2 = gamma(r, ST2[:-1].T, X, t_grid, vol, type).T
+
+    # Control variates cumulative sum
+    cv1d = np.cumsum(deltaST1*(ST1[1:] - ST1[:-1]*erdt), axis=0)
+    cv2d = np.cumsum(deltaST2*(ST2[1:] - ST2[:-1]*erdt), axis=0)
+    cv1g = np.cumsum(gammaST1*((ST1[1:] - ST1[:-1])**2 - ergamma*ST1[:-1]**2), axis=0)
+    cv2g = np.cumsum(gammaST2*((ST2[1:] - ST2[:-1])**2 - ergamma*ST2[:-1]**2), axis=0)
+
+    # Pathwise delta at t=0 using chain rule adjustment
+    if type == "C":
+        delta_paths = 0.5 * ((ST1[-1] > X).astype(float) * ST1[-1]/S + beta1*cv1d[-1]/S + beta2*cv1g[-1]/S 
+                            +(ST2[-1] > X).astype(float) * ST2[-1]/S + beta1*cv2d[-1]/S + beta2*cv2g[-1]/S)
+    elif type == "P":
+        delta_paths = 0.5 * (-(ST1[-1] < X).astype(float) * ST1[-1]/S - beta1*cv1d[-1]/S - beta2*cv1g[-1]/S
+                             -(ST2[-1] < X).astype(float) * ST2[-1]/S - beta1*cv2d[-1]/S - beta2*cv2g[-1]/S)
+    else:
+        raise ValueError("type must be 'C' or 'P'")
+
+    # Discounting back
+    delta_paths *= np.exp(-r*T)
+
+    delta_exp = np.mean(delta_paths)
+    SE = np.std(delta_paths, ddof=1) / np.sqrt(M)
+
+    return float(delta_exp), float(SE)
+
+# Monte Carlo Gamma using Finite Difference (central difference) method, with proper SE propagation from the three bumped price estimates.
+def calcMCGamma(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str, h: float = 0.5) -> tuple[float, float]:
+
+    # Price at S+h
+    C1, SE1, comp1 = monteCarloV2Final(S + h, X, vol, r, N, M, Z, T, type)
+    
+    # Price at S
+    C2, SE2, comp2 = monteCarloV2Final(S, X, vol, r, N, M, Z, T, type)
+    
+    # Price at S-h
+    C3, SE3, comp3 = monteCarloV2Final(S - h, X, vol, r, N, M, Z, T, type)
+    
+    # Central finite difference
+    gamma_exp = (C1 - 2*C2 + C3) / (h**2)
+    
+    # Propagate SEs (assuming independence)
+    SE = np.sqrt(SE1**2 + 4*SE2**2 + SE3**2) / (h**2)
+    
+    return float(gamma_exp), float(SE)
+
+# Monte Carlo Vega using Finite Difference (central difference) method, with proper SE propagation.
+def calcMCVega(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str, h: float = 0.01) -> tuple[float, float]:
+    
+    # Price at vol+h
+    C1, SE1, comp1 = monteCarloV2Final(S, X, vol + h, r, N, M, Z, T, type)
+    
+    # Price at vol-h
+    C2, SE2, comp2 = monteCarloV2Final(S, X, vol - h, r, N, M, Z, T, type)
+    
+    # Central finite difference for Vega
+    vega_exp = (C1 - C2) / (2 * h)
+    
+    # Standard error propagation (assuming independence)
+    SE = np.sqrt(SE1 ** 2 + SE2 ** 2) / (2 * h)
+    
+    return float(vega_exp/100), float(SE/100)
+
+# Monte Carlo Theta using Finite Difference (central difference) method, with proper SE propagation from the two bumped time estimates.
+def calcMCTheta(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str, h: float = 1/365) -> tuple[float, float]:
+    
+    # Price at T+h_T
+    C2, SE2, comp1 = monteCarloV2Final(S, X, vol, r, N, M, Z, T+h, type)
+    
+    # Price at T-h_T (ensure T-h_T > 0)
+    if T - h <= 0:
+        raise ValueError("T - h_T must be positive for finite difference Theta calculation.")
+    C1, SE1, comp2 = monteCarloV2Final(S, X, vol, r, N, M, Z, T - h, type)
+    
+    # Central finite difference for Theta (per year)
+    theta_exp = (C1 - C2) / h
+    
+    # Standard error propagation (assuming independence)
+    SE = np.sqrt(SE1 ** 2 + SE2 ** 2) / h
+    
+    return float(theta_exp/365), float(SE/365)
+
+# Monte Carlo Rho using Finite Difference (central difference) method, with proper SE propagation from the two bumped rate estimates.
+def calcMCRho(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str, h: float = 0.01) -> tuple[float, float]:
+    
+    # Price at r+h_r
+    C1, SE1, comp1 = monteCarloV2Final(S, X, vol, r + h, N, M, Z, T, type)
+    
+    # Price at r-h_r
+    C2, SE2, comp2 = monteCarloV2Final(S, X, vol, r - h, N, M, Z, T, type)
+    
+    # Central finite difference for Rho (per unit of r)
+    rho_exp = (C1 - C2) / (2 * h)
+    
+    # Standard error propagation (assuming independence)
+    SE = np.sqrt(SE1 ** 2 + SE2 ** 2) / (2 * h)
+    
+    return float(rho_exp/100), float(SE/100)
+
+comparisons(S, X, vol, r, N, M, Z, T, "C")
+
+
+print(calcMCDelta(S, X, vol, r, N, M, Z, T, "C"))
+
+print(delta(r, S, X, T, vol, "C"))
+
+
+print(calcMCGamma(S, X, vol, r, N, M, Z, T, "C"))
+
+print(gamma(r, S, X, T, vol, "C"))
+
+
+print(calcMCVega(S, X, vol, r, N, M, Z, T, "C"))
+
+print(vega(r, S, X, T, vol, "C"))
+
+
+print(calcMCTheta(S, X, vol, r, N, M, Z, T, "C"))
+
+print(theta(r, S, X, T, vol, "C"))
+
+
+print(calcMCRho(S, X, vol, r, N, M, Z, T, "C"))
+
+print(rho(r, S, X, T, vol, "C"))
