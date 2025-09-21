@@ -17,11 +17,11 @@ N = 20 # number of time steps
 M = 1000 # number of simulations
 
 market_value = 3.86 # market price of option
-
 T = 60/365 # Time to expiry (in years)
 
 # NxM matrix of standard normal random numbers: each cell represents the random increment (for each time step in each simulation)
 Z = np.random.normal(size = (N, M))
+
 
 # Helper functions
 
@@ -82,6 +82,70 @@ def stockPricePaths(lnSt: np.ndarray, M: int) -> None:
     plt.show()
 
 
+# Analysis
+
+# Greeks Checks
+def greeksOverview(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str) -> None:
+
+    # Calculating Greeks and their Standard Error, from MC Simulator
+    MCdelta, SEdelta = calcMCDelta(S, X, vol, r, N, M, Z, T, type)
+    MCgamma, SEgamma = calcMCGamma(S, X, vol, r, N, M, Z, T, type)
+    MCvega, SEvega = calcMCVega(S, X, vol, r, N, M, Z, T, type)
+    MCtheta, SEtheta = calcMCTheta(S, X, vol, r, N, M, Z, T, type)
+    MCrho, SErho = calcMCRho(S, X, vol, r, N, M, Z, T, type)
+
+    # Calculating Greeks using BS Formula
+    BSdelta = delta(r, S, X, T, vol, type)
+    BSgamma = gamma(r, S, X, T, vol, type)
+    BSvega = vega(r, S, X, T, vol, type)
+    BStheta = theta(r, S, X, T, vol, type)
+    BSrho = rho(r, S, X, T, vol, type)
+
+    results = [
+        {
+            "Greek": "Delta",
+            "Black-Scholes Formula": BSdelta,
+            "Monte Carlo Simulator": MCdelta,
+            "Standard Error from Monte Carlo Simulator": SEdelta,
+        },
+        {
+            "Greek": "Gamma",
+            "Black-Scholes Formula": BSgamma,
+            "Monte Carlo Simulator": MCgamma,
+            "Standard Error from Monte Carlo Simulator": SEgamma,
+        },
+        {
+            "Greek": "Vega",
+            "Black-Scholes Formula": BSvega,
+            "Monte Carlo Simulator": MCvega,
+            "Standard Error from Monte Carlo Simulator": SEvega,
+        },
+        {
+            "Greek": "Theta",
+            "Black-Scholes Formula": BStheta,
+            "Monte Carlo Simulator": MCtheta,
+            "Standard Error from Monte Carlo Simulator": SEtheta,
+        },
+        {
+            "Greek": "Rho",
+            "Black-Scholes Formula": BSrho,
+            "Monte Carlo Simulator": MCrho,
+            "Standard Error from Monte Carlo Simulator": SErho,
+        }
+    ]
+    pd.set_option('display.max_colwidth', None)
+    
+    columns = [
+        "Greek",
+        "Black-Scholes Formula",
+        "Monte Carlo Simulator",
+        "Standard Error from Monte Carlo Simulator",
+    ]
+
+    df = pd.DataFrame(results, columns=columns)
+    print(df, "\n")
+
+# Comparing Variants of Monte Carlo Simulators for Options PRicing
 def comparisons(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str) -> None:
     
     C02, SE2, comp2 = monteCarloV2(S, X, vol, r, N, M, Z, T, type)
@@ -145,182 +209,9 @@ def comparisons(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.
         "Relative Computation Time",
     ]
     df = pd.DataFrame(results, columns=columns)
-    print(df)
-
+    print(df, "\n")
 
 # Variants of Monte Carlo Simulator for (European) Options Pricing
-
-# Slow Solution for Monte Carlo Implementation - Loops.
-def monteCarloV1(S: float, X: float, vol: float, r: float, N: int, M: int, T: float, type: str) -> tuple[float, float]:
-
-    # S: Stock Price ($)
-    # X: Strike/Exercise Price ($)
-    # vol: Volatility (%)
-    # r: Risk-Free Interest Rate (%)
-    # N: Number of Time Steps
-    # M: Number of Simulations
-    # T: Time to Expiry (in years)
-    # type: defines the type of option -> "C" for Call and "P" for put
-
-
-    #Precompute Constants
-    drift_dt, volsdt, lnS, dt = precompConst(S, vol, r, T, N)
-
-
-    # Standard Error Placeholders
-    sum_payoff = 0 # Accumulator for the sum of simulated option payoffs
-    sum_payoff2 = 0 # Accumulator for the sum of squared payoffs
-
-    # Monte Carlo Method
-    for i in range(M): # M simulations take place (each with N time steps)
-        lnSt = lnS
-
-        # Simulation of N time steps (to expiry date)
-        for j in range(N):
-            lnSt = lnSt + drift_dt + volsdt*np.random.normal() # Update log-price: add deterministic drift and random diffusion
-        
-        ST = np.exp(lnSt) # Simulated Final Stock Price
-
-        # Payoff is calculated differently for Call and Put options
-        if type == "C": # Call Option Case
-            payoff = max(0, ST - X) # Call Payoff: If ST > X, payoff is ST - X; otherwise payoff is 0 (option not exercised)
-        elif type == "P": # Put Option Case
-            payoff = max(0, X - ST) # Put Payoff: If X > ST, payoff is X - ST; otherwise payoff is 0 (option not exercised)
-        else:
-            raise ValueError(f"Invalid option type '{type}'. Must be 'C' for Call or 'P' for Put.")
-                
-        # Accumulate this simulation's payoff (CT) and its square for expectation and variance calculation
-        sum_payoff = sum_payoff + payoff
-        sum_payoff2 = sum_payoff2 + payoff**2
-
-    # Computing Expected Option Value and Standard Error
-    C0, SE =  calcExpValAndSE(r, T, sum_payoff, sum_payoff2, M, 0, False)
-
-    return C0, SE
-    #stockPricePaths(lnSt, M)
-
-
-# Implementing Variance Reductoin with Antithetic Variates for the Slow Solution.
-def monteCarloV1A(S: float, X: float, vol: float, r: float, N: int, M: int, T: float, type: str) -> tuple[float, float]:
-
-    # S: Stock Price ($)
-    # X: Strike/Exercise Price ($)
-    # vol: Volatility (%)
-    # r: Risk-Free Interest Rate (%)
-    # N: Number of Time Steps
-    # M: Number of Simulations
-    # T: Time to Expiry (in years)
-
-    #Precompute Constants
-    drift_dt, volsdt, lnS, dt = precompConst(S, vol, r, T, N)
-
-    # Standard Error Placeholders
-    sum_payoff = 0 # Accumulator for the sum of simulated option payoffs
-    sum_payoff2 = 0 # Accumulator for the sum of squared payoffs
-
-
-    # Monte Carlo Method
-    for i in range(M): # M simulations take place (each with N time steps)
-        lnSt1 = lnS
-        lnSt2 = lnS
-
-        # Simulation of N time steps (to expiry date)
-        for j in range(N):
-
-            # Perfectly negatively correated assets: lnSt1 and lnSt2
-            epsilon = np.random.normal()
-
-            # Updating log-prices for both assets: add deterministic drift and random diffusion
-            lnSt1 = lnSt1 + drift_dt + volsdt*epsilon
-            lnSt2 = lnSt2 + drift_dt - volsdt*epsilon
-        
-        ST1 = np.exp(lnSt1) # Simulated Final Stock Price of asset 1
-        ST2 = np.exp(lnSt2) # Simulated Final Stock Price of asset 2
-
-        # Payoff is calculated differently for Call and Put options
-        if type == "C": # Call Option Case
-            payoff = (max(0, ST1 - X) + max(0, ST2 - X))/2 # Average Call Payoff of the two assets
-        elif type == "P": # Put Option Case
-            payoff = (max(0, X - ST1) + max(0, X - ST2))/2 # Average Put Payoff of the two assets
-        else:
-            raise ValueError(f"Invalid option type '{type}'. Must be 'C' for Call or 'P' for Put.")
-        
-        # Accumulate this simulation's payoff and its square for expectation and variance calculation
-        sum_payoff = sum_payoff + payoff
-        sum_payoff2 = sum_payoff2 + payoff**2
-
-        # Computing Expected Option Value and Standard Error
-        C0, SE =  calcExpValAndSE(r, T, sum_payoff, sum_payoff2, M, 0, False)
-
-        return C0, SE
-        #stockPricePaths(lnSt, M)
-
-
-# Implementing Variance Reductoin with (Delta-based) Control Variates for the Slow Solution.
-def monteCarloV1DC(S: float, X: float, vol: float, r: float, N: int, M: int, T: float, type: str) -> tuple[float, float]:
-
-    # S: Stock Price ($)
-    # X: Strike/Exercise Price ($)
-    # vol: Volatility (%)
-    # r: Risk-Free Interest Rate (%)
-    # N: Number of Time Steps
-    # M: Number of Simulations
-    # T: Time to Expiry (in years)
-
-    #Precompute Constants
-    drift_dt, volsdt, lnS, dt = precompConst(S, vol, r, T, N)
-
-    # Exponential of (risk-free rate x change in time): forward factor
-    erdt = np.exp(r*dt)
-
-    beta1 = -1  # Hardcoded beta coefficient for control variate adjustment; typically estimated but fixed here for simplicity
-
-    # Standard Error Placeholders
-    sum_payoff = 0 # Accumulator for the sum of simulated option payoffs
-    sum_payoff2 = 0 # Accumulator for the sum of squared payoffs
-
-
-    # Monte Carlo Method
-    for i in range(M): # M simulations take place (each with N time steps)
-        St = S
-        cv = 0 # control variate accumulator
-
-        # Simulation of N time steps (to expiry date)
-        for j in range(N):
-
-            epsilon = np.random.normal()
-
-            # Calculate delta of the option at current step for control variate adjustment
-            deltaSt = delta(r, S, X, T-j*dt, vol, type)
-
-            # Simulate next stock price using geometric Brownian motion
-            next_St = St*np.exp(drift_dt + volsdt*epsilon)
-
-            # Accumulate control variate term: delta times difference between actual and expected increment
-            cv = cv + deltaSt*(next_St - St*erdt)
-
-            St = next_St
-
-        # Adjust payoff by adding control variate term scaled by beta1
-        # This reduces variance by leveraging correlation between payoff and control variate
-        if type == "C":
-            payoff = max(0, St - X) + beta1*cv
-        elif type == "P":
-            payoff = max(0, X - St) + beta1*cv
-        else:
-            raise ValueError(f"Invalid option type '{type}'. Must be 'C' for Call or 'P' for Put.")
-
-        sum_payoff = sum_payoff + payoff
-        sum_payoff2 = sum_payoff2 + payoff**2
-
-    
-    # Computing Expected Option Value and Standard Error
-    # Note: payoff already includes control variate adjustment; discounting done in calcExpValAndSE
-    C0, SE =  calcExpValAndSE(r, T, sum_payoff, sum_payoff2, M, 0, False)
-    
-    return C0, SE
-    #stockPricePaths(lnSt, M)
-
 
 # Vectorized Version - Faster, more efficient implementation of Monte Carlo Simulation.
 def monteCarloV2(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str) -> tuple[float, float]:
@@ -707,11 +598,11 @@ def calcMCDelta(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.
 
     # Pathwise delta at t=0 using chain rule adjustment
     if type == "C":
-        delta_paths = 0.5 * ((ST1[-1] > X).astype(float) * ST1[-1]/S + beta1*cv1d[-1]/S + beta2*cv1g[-1]/S 
-                            +(ST2[-1] > X).astype(float) * ST2[-1]/S + beta1*cv2d[-1]/S + beta2*cv2g[-1]/S)
+        delta_paths = 0.5 * ((ST1[-1] > X).astype(float) * ST1[-1]/S 
+                            +(ST2[-1] > X).astype(float) * ST2[-1]/S )
     elif type == "P":
-        delta_paths = 0.5 * (-(ST1[-1] < X).astype(float) * ST1[-1]/S - beta1*cv1d[-1]/S - beta2*cv1g[-1]/S
-                             -(ST2[-1] < X).astype(float) * ST2[-1]/S - beta1*cv2d[-1]/S - beta2*cv2g[-1]/S)
+        delta_paths = 0.5 * (-(ST1[-1] < X).astype(float) * ST1[-1]/S
+                             -(ST2[-1] < X).astype(float) * ST2[-1]/S )
     else:
         raise ValueError("type must be 'C' or 'P'")
 
@@ -763,12 +654,12 @@ def calcMCVega(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.n
 # Monte Carlo Theta using Finite Difference (central difference) method, with proper SE propagation from the two bumped time estimates.
 def calcMCTheta(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str, h: float = 1/365) -> tuple[float, float]:
     
-    # Price at T+h_T
+    # Price at T+h
     C2, SE2, comp1 = monteCarloV2Final(S, X, vol, r, N, M, Z, T+h, type)
     
-    # Price at T-h_T (ensure T-h_T > 0)
+    # Price at T-h (ensure T-h > 0)
     if T - h <= 0:
-        raise ValueError("T - h_T must be positive for finite difference Theta calculation.")
+        raise ValueError("T - h must be positive for finite difference Theta calculation.")
     C1, SE1, comp2 = monteCarloV2Final(S, X, vol, r, N, M, Z, T - h, type)
     
     # Central finite difference for Theta (per year)
@@ -782,10 +673,10 @@ def calcMCTheta(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.
 # Monte Carlo Rho using Finite Difference (central difference) method, with proper SE propagation from the two bumped rate estimates.
 def calcMCRho(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str, h: float = 0.01) -> tuple[float, float]:
     
-    # Price at r+h_r
+    # Price at r+h
     C1, SE1, comp1 = monteCarloV2Final(S, X, vol, r + h, N, M, Z, T, type)
     
-    # Price at r-h_r
+    # Price at r-h
     C2, SE2, comp2 = monteCarloV2Final(S, X, vol, r - h, N, M, Z, T, type)
     
     # Central finite difference for Rho (per unit of r)
@@ -799,26 +690,4 @@ def calcMCRho(S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.nd
 comparisons(S, X, vol, r, N, M, Z, T, "C")
 
 
-print(calcMCDelta(S, X, vol, r, N, M, Z, T, "C"))
-
-print(delta(r, S, X, T, vol, "C"))
-
-
-print(calcMCGamma(S, X, vol, r, N, M, Z, T, "C"))
-
-print(gamma(r, S, X, T, vol, "C"))
-
-
-print(calcMCVega(S, X, vol, r, N, M, Z, T, "C"))
-
-print(vega(r, S, X, T, vol, "C"))
-
-
-print(calcMCTheta(S, X, vol, r, N, M, Z, T, "C"))
-
-print(theta(r, S, X, T, vol, "C"))
-
-
-print(calcMCRho(S, X, vol, r, N, M, Z, T, "C"))
-
-print(rho(r, S, X, T, vol, "C"))
+greeksOverview(S, X, vol, r, N, M, Z, T, "C")
