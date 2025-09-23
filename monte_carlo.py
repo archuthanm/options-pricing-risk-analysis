@@ -5,18 +5,6 @@ import scipy.stats as stats
 import matplotlib.pyplot as plt
 from black_scholes import bs_delta as delta, bs_gamma as gamma
 
-# Baseline option parameters for Monte Carlo option pricing and variance reduction experiments.
-S = 101.15  # Underlying asset price
-X = 98.01  # Option strike price
-r = 0.015  # Risk-free interest rate
-N = 20  # Time discretization steps
-M = 1000  # Number of Monte Carlo paths
-market_value = 3.86  # Observed market option price
-T = 60/365  # Time to maturity (years)
-vol = 0.0991  # Annualized volatility
-# Standard normal draws (N time steps × M paths) for stochastic increments.
-Z = np.random.normal(size = (N, M))
-
 
 #---------ANALYSIS---------------
 
@@ -71,50 +59,50 @@ def benchmark_mc_variants(
     Returns:
         pd.DataFrame: DataFrame summarizing standard error and computation time for each Monte Carlo variant.
     """
-    C02, SE2, comp2 = mc_baseline(S, X, vol, r, N, M, Z, T, type)
-    C03, SE3, comp3 = mc_antithetic(S, X, vol, r, N, M, Z, T, type)
-    C04, SE4, comp4 = mc_delta_control(S, X, vol, r, N, M, Z, T, type)
-    C05, SE5, comp5 = mc_gamma_control(S, X, vol, r, N, M, Z, T, type)
-    C06, SE6, comp6 = mc_antithetic_delta(S, X, vol, r, N, M, Z, T, type)
-    C07, SE7, comp7 = mc_antithetic_delta_gamma(S, X, vol, r, N, M, Z, T, type)
+    C02, SE2, comp2 = mc_baseline(S, X, vol, r, N, M, Z, T, type, return_payoffs=False)
+    C03, SE3, comp3 = mc_antithetic(S, X, vol, r, N, M, Z, T, type, return_payoffs=False)
+    C04, SE4, comp4 = mc_delta_control(S, X, vol, r, N, M, Z, T, type, return_payoffs=False)
+    C05, SE5, comp5 = mc_gamma_control(S, X, vol, r, N, M, Z, T, type, return_payoffs=False)
+    C06, SE6, comp6 = mc_antithetic_delta(S, X, vol, r, N, M, Z, T, type, return_payoffs=False)
+    C07, SE7, comp7 = mc_antithetic_delta_gamma(S, X, vol, r, N, M, Z, T, type, return_payoffs=False)
     results = [
         {
-            "Function": "Vectorized Monte Carlo",
+            "Function": "Vectorized Baseline",
             "Standard Error": SE2,
             "Computation Time": comp2,
             "Standard Error Reduction Multiple": SE2/SE2,
             "Relative Computation Time": comp2/comp2,
         },
         {
-            "Function": "Vectorized Monte Carlo with Antithetic Variates",
+            "Function": "Antithetic Variates",
             "Standard Error": SE3,
             "Computation Time": comp3,
             "Standard Error Reduction Multiple": SE2/SE3,
             "Relative Computation Time": comp3/comp2,
         },
         {
-            "Function": "Vectorized Monte Carlo with Delta-based Control Variates",
+            "Function": "Delta-based Control Variates",
             "Standard Error": SE4,
             "Computation Time": comp4,
             "Standard Error Reduction Multiple": SE2/SE4,
             "Relative Computation Time": comp4/comp2,
         },
         {
-            "Function": "Vectorized Monte Carlo with Gamma-based Control Variates",
+            "Function": "Gamma-based Control Variates",
             "Standard Error": SE5,
             "Computation Time": comp5,
             "Standard Error Reduction Multiple": SE2/SE5,
             "Relative Computation Time": comp5/comp2,
         },
         {
-            "Function": "Vectorized Monte Carlo with Antithetic AND Delta Variates",
+            "Function": "Antithetic AND Delta Variates",
             "Standard Error": SE6,
             "Computation Time": comp6,
             "Standard Error Reduction Multiple": SE2/SE6,
             "Relative Computation Time": comp6/comp2,
         },
         {
-            "Function": "Vectorized Monte Carlo with Antithetic, Delta AND Gamma Variates",
+            "Function": "Antithetic, Delta AND Gamma Variates",
             "Standard Error": SE7,
             "Computation Time": comp7,
             "Standard Error Reduction Multiple": SE2/SE7,
@@ -136,7 +124,8 @@ def benchmark_mc_variants(
 #---------MONTE CARLO SIMULATIONS----------
 
 def mc_baseline(
-    S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str) -> tuple[float, float, float]:
+    S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str, return_payoffs: bool = False
+) -> tuple[float, float, float] | np.ndarray:
     """
     Baseline vectorized Monte Carlo implementation for European option pricing.
 
@@ -188,10 +177,13 @@ def mc_baseline(
     # Standard error of estimate
     SE = sigma/np.sqrt(M)
     computation_time = time.time() - start_time
+    if return_payoffs:
+        return discounted_payoff
     return C0, SE, computation_time
 
 def mc_antithetic(
-    S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str) -> tuple[float, float, float]:
+    S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str, return_payoffs: bool = False
+) -> tuple[float, float, float] | np.ndarray:
     """
     Monte Carlo option pricing using antithetic variates for variance reduction.
 
@@ -235,10 +227,13 @@ def mc_antithetic(
     sigma = np.sqrt(np.sum((discounted_payoff - C0)**2) / (M - 1))
     SE = sigma/np.sqrt(M)
     computation_time = time.time() - start_time
+    if return_payoffs:
+        return discounted_payoff
     return C0, SE, computation_time
 
 def mc_delta_control(
-    S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str) -> tuple[float, float, float]:
+    S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str, return_payoffs: bool = False
+) -> tuple[float, float, float] | np.ndarray:
     """
     Monte Carlo option pricing using Delta-based control variates for variance reduction.
 
@@ -292,10 +287,13 @@ def mc_delta_control(
     # Standard error of estimate
     SE = sigma / np.sqrt(M)
     computation_time = time.time() - start_time
+    if return_payoffs:
+        return discounted_payoff
     return C0, SE, computation_time
 
 def mc_gamma_control(
-    S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str) -> tuple[float, float, float]:
+    S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str, return_payoffs: bool = False
+) -> tuple[float, float, float] | np.ndarray:
     """
     Monte Carlo option pricing using Gamma-based control variates for variance reduction.
 
@@ -350,10 +348,13 @@ def mc_gamma_control(
     # Standard error of estimate
     SE = sigma / np.sqrt(M)
     computation_time = time.time() - start_time
+    if return_payoffs:
+        return discounted_payoff
     return C0, SE, computation_time
 
 def mc_antithetic_delta(
-    S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str) -> tuple[float, float, float]:
+    S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str, return_payoffs: bool = False
+) -> tuple[float, float, float] | np.ndarray:
     """
     Monte Carlo option pricing using antithetic variates and Delta-based control variates.
 
@@ -414,10 +415,13 @@ def mc_antithetic_delta(
     # Standard error of estimate
     SE = sigma / np.sqrt(M)
     computation_time = time.time() - start_time
+    if return_payoffs:
+        return discounted_payoff
     return C0, SE, computation_time
 
 def mc_antithetic_delta_gamma(
-    S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str) -> tuple[float, float, float]:
+    S: float, X: float, vol: float, r: float, N: int, M: int, Z: np.ndarray, T: float, type: str, return_payoffs: bool = False
+) -> tuple[float, float, float] | np.ndarray:
     """
     Monte Carlo option pricing using antithetic variates, Delta-based, and Gamma-based control variates.
 
@@ -484,6 +488,8 @@ def mc_antithetic_delta_gamma(
     # Standard error of estimate
     SE = sigma / np.sqrt(M)
     computation_time = time.time() - start_time
+    if return_payoffs:
+        return discounted_payoff
     return C0, SE, computation_time
 
 
@@ -561,11 +567,11 @@ def mc_gamma(
         tuple: (Gamma estimate (float), standard error (float))
     """
     # Price with upward spot bump
-    C1, SE1, comp1 = mc_antithetic_delta_gamma(S + h, X, vol, r, N, M, Z, T, type)
+    C1, SE1, comp1 = mc_antithetic_delta_gamma(S + h, X, vol, r, N, M, Z, T, type, return_payoffs=False)
     # Price at baseline spot
-    C2, SE2, comp2 = mc_antithetic_delta_gamma(S, X, vol, r, N, M, Z, T, type)
+    C2, SE2, comp2 = mc_antithetic_delta_gamma(S, X, vol, r, N, M, Z, T, type, return_payoffs=False)
     # Price with downward spot bump
-    C3, SE3, comp3 = mc_antithetic_delta_gamma(S - h, X, vol, r, N, M, Z, T, type)
+    C3, SE3, comp3 = mc_antithetic_delta_gamma(S - h, X, vol, r, N, M, Z, T, type, return_payoffs=False)
     # Central difference approximation
     gamma_exp = (C1 - 2 * C2 + C3) / (h ** 2)
     # Standard error propagation
@@ -593,9 +599,9 @@ def mc_vega(
         tuple: (Vega estimate per 1% vol (float), standard error (float))
     """
     # Price with upward volatility bump
-    C1, SE1, comp1 = mc_antithetic_delta_gamma(S, X, vol + h, r, N, M, Z, T, type)
+    C1, SE1, comp1 = mc_antithetic_delta_gamma(S, X, vol + h, r, N, M, Z, T, type, return_payoffs=False)
     # Price with downward volatility bump
-    C2, SE2, comp2 = mc_antithetic_delta_gamma(S, X, vol - h, r, N, M, Z, T, type)
+    C2, SE2, comp2 = mc_antithetic_delta_gamma(S, X, vol - h, r, N, M, Z, T, type, return_payoffs=False)
     # Central difference approximation
     vega_exp = (C1 - C2) / (2 * h)
     # Standard error propagation
@@ -623,11 +629,11 @@ def mc_theta(
         tuple: (Theta estimate per day (float), standard error (float))
     """
     # Price with extended maturity
-    C2, SE2, comp1 = mc_antithetic_delta_gamma(S, X, vol, r, N, M, Z, T + h, type)
+    C2, SE2, comp1 = mc_antithetic_delta_gamma(S, X, vol, r, N, M, Z, T + h, type, return_payoffs=False)
     # Price with reduced maturity
     if T - h <= 0:
         raise ValueError("T - h must be positive for finite difference Theta calculation.")
-    C1, SE1, comp2 = mc_antithetic_delta_gamma(S, X, vol, r, N, M, Z, T - h, type)
+    C1, SE1, comp2 = mc_antithetic_delta_gamma(S, X, vol, r, N, M, Z, T - h, type, return_payoffs=False)
     # Central difference approximation
     theta_exp = (C1 - C2) / (2 * h)
     # Standard error propagation
@@ -655,14 +661,11 @@ def mc_rho(
         tuple: (Rho estimate per 1% rate (float), standard error (float))
     """
     # Price with upward rate bump
-    C1, SE1, comp1 = mc_antithetic_delta_gamma(S, X, vol, r + h, N, M, Z, T, type)
+    C1, SE1, comp1 = mc_antithetic_delta_gamma(S, X, vol, r + h, N, M, Z, T, type, return_payoffs=False)
     # Price with downward rate bump
-    C2, SE2, comp2 = mc_antithetic_delta_gamma(S, X, vol, r - h, N, M, Z, T, type)
+    C2, SE2, comp2 = mc_antithetic_delta_gamma(S, X, vol, r - h, N, M, Z, T, type, return_payoffs=False)
     # Central difference approximation
     rho_exp = (C1 - C2) / (2 * h)
     # Standard error propagation
     SE = np.sqrt(SE1 ** 2 + SE2 ** 2) / (2 * h)
     return float(rho_exp / 100), float(SE / 100)
-
-
-print(benchmark_mc_variants(S, X, vol, r, N, M, Z, T, "C"))

@@ -83,7 +83,3 @@ def compare_greeks(S: float, X: float, vol: float, r: float, N: int, M: int, Z: 
     pd.set_option('display.max_colwidth', None)
     return df
 
-
-print(compare_greeks(S, X, vol, r, N, M, Z, T, "C"))
-
-
